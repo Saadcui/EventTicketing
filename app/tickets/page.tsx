@@ -1,218 +1,492 @@
-"use client"
+'use client'
 
-import { useEffect, useState } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Button } from "@/components/ui/button"
-import { createClient } from "@/lib/supabase/client"
-import { useRouter } from "next/navigation"
-import Link from "next/link"
-import Image from "next/image"
-import { CalendarDays, MapPin, Ticket, QrCode, Download } from "lucide-react"
+import { useEffect, useState } from 'react'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { QrCode, Download, Share2, Calendar, MapPin, Clock, Ticket } from 'lucide-react'
+import { mockAuth } from '@/lib/mock-auth'
+import { useRouter } from 'next/navigation'
+import { useToast } from '@/hooks/use-toast'
 
-export default function TicketsPage() {
-  const [isLoading, setIsLoading] = useState(true)
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
-  const [tickets, setTickets] = useState([])
-  const router = useRouter()
-  const supabase = createClient()
-
-  useEffect(() => {
-    async function fetchTickets() {
-      try {
-        // Check if user is authenticated
-        const { data: sessionData } = await supabase.auth.getSession()
-
-        if (!sessionData.session) {
-          setIsAuthenticated(false)
-          setIsLoading(false)
-          return
-        }
-
-        setIsAuthenticated(true)
-        const userId = sessionData.session.user.id
-
-        // Fetch tickets for this user
-        const { data: ticketsData, error } = await supabase
-          .from("tickets")
-          .select(`
-            *,
-            events(id, title, date, location, image_url),
-            ticket_types(name, price)
-          `)
-          .eq("user_id", userId)
-          .order("created_at", { ascending: false })
-
-        if (error) {
-          console.error("Error fetching tickets:", error)
-        } else {
-          setTickets(ticketsData || [])
-        }
-
-        setIsLoading(false)
-      } catch (error) {
-        console.error("Tickets error:", error)
-        setIsLoading(false)
-      }
-    }
-
-    fetchTickets()
-  }, [])
-
-  // Separate tickets by status (default to active if status is not set)
-  const activeTickets = tickets.filter((ticket) => ticket.status === "active" || !ticket.status)
-  const usedTickets = tickets.filter((ticket) => ticket.status === "used")
-  const transferredTickets = tickets.filter((ticket) => ticket.status === "transferred")
-
-  if (isLoading) {
-    return (
-      <div className="container py-8">
-        <div className="flex justify-center items-center min-h-[50vh]">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-            <p className="text-muted-foreground">Loading tickets...</p>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  if (!isAuthenticated) {
-    return (
-      <div className="container py-8">
-        <Card className="max-w-md mx-auto">
-          <CardHeader>
-            <CardTitle>Authentication Required</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="mb-4">You need to be logged in to view your tickets.</p>
-            <Button asChild>
-              <Link href="/auth/login?redirect=/tickets">Log In</Link>
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
-
-  return (
-    <div className="container py-8">
-      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-8">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">My Tickets</h1>
-          <p className="text-muted-foreground">View and manage your event tickets</p>
-        </div>
-      </div>
-
-      <Tabs defaultValue="active" className="mb-8">
-        <TabsList>
-          <TabsTrigger value="active">Active ({activeTickets.length})</TabsTrigger>
-          <TabsTrigger value="used">Used ({usedTickets.length})</TabsTrigger>
-          <TabsTrigger value="transferred">Transferred ({transferredTickets.length})</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="active" className="mt-6">
-          <TicketList tickets={activeTickets} />
-        </TabsContent>
-
-        <TabsContent value="used" className="mt-6">
-          <TicketList tickets={usedTickets} />
-        </TabsContent>
-
-        <TabsContent value="transferred" className="mt-6">
-          <TicketList tickets={transferredTickets} />
-        </TabsContent>
-      </Tabs>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Blockchain Verification</CardTitle>
-          <CardDescription>All your tickets are secured as NFTs on the Solana blockchain</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-col md:flex-row items-center gap-6 p-4 bg-muted/50 rounded-lg">
-            <div className="flex-shrink-0">
-              <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
-                <QrCode className="h-8 w-8 text-primary" />
-              </div>
-            </div>
-            <div className="flex-1 text-center md:text-left">
-              <h3 className="text-lg font-medium mb-2">Verify Your Tickets</h3>
-              <p className="text-muted-foreground mb-4">
-                Your tickets are secured as NFTs on the Solana blockchain, ensuring authenticity and preventing fraud.
-                You can verify ownership and transfer tickets securely.
-              </p>
-              <div className="flex flex-col sm:flex-row gap-2">
-                <Button variant="outline" asChild>
-                  <Link href="/wallet/setup">
-                    <QrCode className="mr-2 h-4 w-4" /> Connect Wallet
-                  </Link>
-                </Button>
-                <Button variant="outline">
-                  <Download className="mr-2 h-4 w-4" /> Export Ticket Records
-                </Button>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  )
+interface TicketData {
+  id: string
+  eventTitle: string
+  eventDate: string
+  eventLocation: string
+  ticketType: string
+  price: number
+  purchaseDate: string
+  status: 'active' | 'used' | 'transferred' | 'expired'
+  qrCode: string
+  seatNumber?: string
+  category: string
+  nftTokenId?: string
 }
 
-// Simple ticket list component
-function TicketList({ tickets }: { tickets: any[] }) {
-  if (tickets.length === 0) {
+export default function TicketsPage() {
+  const [user, setUser] = useState(mockAuth.getCurrentUser())
+  const [tickets, setTickets] = useState<TicketData[]>([])
+  const [loading, setLoading] = useState(true)
+  const router = useRouter()
+  const { toast } = useToast()
+
+  useEffect(() => {
+    const unsubscribe = mockAuth.subscribe((state) => {
+      setUser(state.user)
+      if (!state.user && !state.isLoading) {
+        router.push('/auth/login')
+      }
+    })
+
+    return unsubscribe
+  }, [router])
+
+  useEffect(() => {
+    if (user) {
+      // Simulate loading tickets data
+      setTimeout(() => {
+        setTickets([
+          {
+            id: 'ticket-1',
+            eventTitle: 'Tech Conference 2024',
+            eventDate: '2024-03-15T09:00:00Z',
+            eventLocation: 'San Francisco, CA',
+            ticketType: 'VIP Pass',
+            price: 299,
+            purchaseDate: '2024-02-01T10:30:00Z',
+            status: 'active',
+            qrCode: 'QR123456789',
+            seatNumber: 'A-15',
+            category: 'Technology',
+            nftTokenId: 'NFT-001'
+          },
+          {
+            id: 'ticket-2',
+            eventTitle: 'Music Festival Summer',
+            eventDate: '2024-04-20T18:00:00Z',
+            eventLocation: 'Austin, TX',
+            ticketType: 'General Admission',
+            price: 89,
+            purchaseDate: '2024-02-15T14:20:00Z',
+            status: 'active',
+            qrCode: 'QR987654321',
+            category: 'Music',
+            nftTokenId: 'NFT-002'
+          },
+          {
+            id: 'ticket-3',
+            eventTitle: 'Art Exhibition Opening',
+            eventDate: '2024-02-28T19:00:00Z',
+            eventLocation: 'New York, NY',
+            ticketType: 'Premium',
+            price: 45,
+            purchaseDate: '2024-02-20T16:45:00Z',
+            status: 'used',
+            qrCode: 'QR456789123',
+            category: 'Art',
+            nftTokenId: 'NFT-003'
+          },
+          {
+            id: 'ticket-4',
+            eventTitle: 'Business Summit',
+            eventDate: '2024-05-10T08:30:00Z',
+            eventLocation: 'Chicago, IL',
+            ticketType: 'Early Bird',
+            price: 199,
+            purchaseDate: '2024-01-15T11:00:00Z',
+            status: 'active',
+            qrCode: 'QR789123456',
+            seatNumber: 'B-22',
+            category: 'Business',
+            nftTokenId: 'NFT-004'
+          },
+          {
+            id: 'ticket-5',
+            eventTitle: 'Food & Wine Expo',
+            eventDate: '2024-03-25T12:00:00Z',
+            eventLocation: 'Los Angeles, CA',
+            ticketType: 'Tasting Pass',
+            price: 75,
+            purchaseDate: '2024-02-10T09:15:00Z',
+            status: 'transferred',
+            qrCode: 'QR321654987',
+            category: 'Food'
+          }
+        ])
+        setLoading(false)
+      }, 1000)
+    }
+  }, [user])
+
+  const handleDownloadTicket = (ticketId: string) => {
+    toast({
+      title: "Ticket downloaded",
+      description: "Your ticket has been downloaded to your device.",
+    })
+  }
+
+  const handleShareTicket = (ticketId: string) => {
+    toast({
+      title: "Share link copied",
+      description: "The ticket share link has been copied to your clipboard.",
+    })
+  }
+
+  const handleTransferTicket = (ticketId: string) => {
+    toast({
+      title: "Transfer initiated",
+      description: "Ticket transfer process has been started.",
+    })
+  }
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+  }
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'active': return 'default'
+      case 'used': return 'secondary'
+      case 'transferred': return 'outline'
+      case 'expired': return 'destructive'
+      default: return 'default'
+    }
+  }
+
+  if (!user) {
     return (
-      <Card>
-        <CardContent className="flex flex-col items-center justify-center py-12">
-          <Ticket className="h-12 w-12 text-muted-foreground mb-4" />
-          <h3 className="text-xl font-medium mb-2">No Tickets Found</h3>
-          <p className="text-muted-foreground text-center max-w-md mb-6">
-            You don't have any tickets in this category. Discover events and purchase tickets to see them here.
-          </p>
-          <Button asChild>
-            <Link href="/discover">Discover Events</Link>
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold mb-4">Please log in to view your tickets</h2>
+          <Button onClick={() => router.push('/auth/login')}>
+            Go to Login
           </Button>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     )
   }
 
-  return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-      {tickets.map((ticket) => (
-        <Card key={ticket.id} className="overflow-hidden">
-          <div className="relative aspect-video overflow-hidden">
-            <Image
-              src={ticket.events?.image_url || "/placeholder.svg?height=400&width=600"}
-              alt={ticket.events?.title || "Event"}
-              fill
-              className="object-cover"
-            />
+  if (loading) {
+    return (
+      <div className="container mx-auto p-6">
+        <div className="space-y-6">
+          <div>
+            <h1 className="text-3xl font-bold">My Tickets</h1>
+            <p className="text-muted-foreground">Manage your event tickets</p>
           </div>
-          <CardContent className="p-4">
-            <h3 className="font-semibold text-lg mb-2 line-clamp-1">{ticket.events?.title || "Unknown Event"}</h3>
-            <div className="space-y-1 text-sm text-muted-foreground">
-              <div className="flex items-center">
-                <CalendarDays className="h-4 w-4 mr-2" />
-                {ticket.events?.date || "Date not available"}
-              </div>
-              <div className="flex items-center">
-                <MapPin className="h-4 w-4 mr-2" />
-                {ticket.events?.location || "Location not available"}
-              </div>
-              <div className="flex items-center text-sm font-medium">
-                <Ticket className="mr-2 h-4 w-4 text-muted-foreground" />
-                {ticket.ticket_types?.name || "Standard Ticket"} - ${ticket.ticket_types?.price?.toFixed(2) || "0.00"}
-              </div>
+          
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {[...Array(6)].map((_, i) => (
+              <Card key={i}>
+                <CardHeader>
+                  <div className="h-4 bg-gray-200 rounded w-3/4 animate-pulse mb-2"></div>
+                  <div className="h-3 bg-gray-200 rounded w-1/2 animate-pulse"></div>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    <div className="h-3 bg-gray-200 rounded animate-pulse"></div>
+                    <div className="h-3 bg-gray-200 rounded w-2/3 animate-pulse"></div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  const activeTickets = tickets.filter(t => t.status === 'active')
+  const usedTickets = tickets.filter(t => t.status === 'used')
+  const transferredTickets = tickets.filter(t => t.status === 'transferred')
+
+  return (
+    <div className="container mx-auto p-6">
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-3xl font-bold">My Tickets</h1>
+            <p className="text-muted-foreground">Manage your event tickets and NFTs</p>
+          </div>
+          <Button onClick={() => router.push('/discover')}>
+            <Ticket className="mr-2 h-4 w-4" />
+            Browse Events
+          </Button>
+        </div>
+
+        {/* Summary Cards */}
+        <div className="grid gap-4 md:grid-cols-3">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Active Tickets</CardTitle>
+              <Ticket className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{activeTickets.length}</div>
+              <p className="text-xs text-muted-foreground">
+                Ready to use
+              </p>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Used Tickets</CardTitle>
+              <QrCode className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{usedTickets.length}</div>
+              <p className="text-xs text-muted-foreground">
+                Events attended
+              </p>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">NFT Tickets</CardTitle>
+              <Share2 className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{tickets.filter(t => t.nftTokenId).length}</div>
+              <p className="text-xs text-muted-foreground">
+                Blockchain verified
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Tickets Management */}
+        <Tabs defaultValue="active" className="space-y-4">
+          <TabsList>
+            <TabsTrigger value="active">Active ({activeTickets.length})</TabsTrigger>
+            <TabsTrigger value="used">Used ({usedTickets.length})</TabsTrigger>
+            <TabsTrigger value="transferred">Transferred ({transferredTickets.length})</TabsTrigger>
+            <TabsTrigger value="all">All Tickets</TabsTrigger>
+          </TabsList>
+          
+          <TabsContent value="active" className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {activeTickets.map((ticket) => (
+                <Card key={ticket.id} className="overflow-hidden">
+                  <CardHeader className="pb-3">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <CardTitle className="text-lg">{ticket.eventTitle}</CardTitle>
+                        <CardDescription>{ticket.ticketType}</CardDescription>
+                      </div>
+                      <Badge variant={getStatusColor(ticket.status)}>
+                        {ticket.status}
+                      </Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-2">
+                      <div className="flex items-center text-sm">
+                        <Calendar className="mr-2 h-4 w-4" />
+                        {formatDate(ticket.eventDate)}
+                      </div>
+                      <div className="flex items-center text-sm">
+                        <MapPin className="mr-2 h-4 w-4" />
+                        {ticket.eventLocation}
+                      </div>
+                      {ticket.seatNumber && (
+                        <div className="flex items-center text-sm">
+                          <Ticket className="mr-2 h-4 w-4" />
+                          Seat: {ticket.seatNumber}
+                        </div>
+                      )}
+                      <div className="flex items-center text-sm font-semibold">
+                        <span>${ticket.price}</span>
+                        {ticket.nftTokenId && (
+                          <Badge variant="outline" className="ml-2">NFT</Badge>
+                        )}
+                      </div>
+                    </div>
+                    
+                    <div className="flex gap-2">
+                      <Button size="sm" onClick={() => handleDownloadTicket(ticket.id)}>
+                        <Download className="mr-1 h-3 w-3" />
+                        Download
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => handleShareTicket(ticket.id)}>
+                        <Share2 className="mr-1 h-3 w-3" />
+                        Share
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => handleTransferTicket(ticket.id)}>
+                        Transfer
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
             </div>
-            <div className="flex gap-2 mt-4">
-              <Button className="flex-1">View Ticket</Button>
+          </TabsContent>
+          
+          <TabsContent value="used" className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {usedTickets.map((ticket) => (
+                <Card key={ticket.id} className="overflow-hidden opacity-75">
+                  <CardHeader className="pb-3">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <CardTitle className="text-lg">{ticket.eventTitle}</CardTitle>
+                        <CardDescription>{ticket.ticketType}</CardDescription>
+                      </div>
+                      <Badge variant={getStatusColor(ticket.status)}>
+                        {ticket.status}
+                      </Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-2">
+                      <div className="flex items-center text-sm">
+                        <Calendar className="mr-2 h-4 w-4" />
+                        {formatDate(ticket.eventDate)}
+                      </div>
+                      <div className="flex items-center text-sm">
+                        <MapPin className="mr-2 h-4 w-4" />
+                        {ticket.eventLocation}
+                      </div>
+                      <div className="flex items-center text-sm font-semibold">
+                        <span>${ticket.price}</span>
+                        {ticket.nftTokenId && (
+                          <Badge variant="outline" className="ml-2">NFT</Badge>
+                        )}
+                      </div>
+                    </div>
+                    
+                    <div className="flex gap-2">
+                      <Button size="sm" disabled>
+                        <QrCode className="mr-1 h-3 w-3" />
+                        Used
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => handleDownloadTicket(ticket.id)}>
+                        <Download className="mr-1 h-3 w-3" />
+                        Receipt
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
             </div>
-          </CardContent>
-        </Card>
-      ))}
+          </TabsContent>
+          
+          <TabsContent value="transferred" className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {transferredTickets.map((ticket) => (
+                <Card key={ticket.id} className="overflow-hidden opacity-60">
+                  <CardHeader className="pb-3">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <CardTitle className="text-lg">{ticket.eventTitle}</CardTitle>
+                        <CardDescription>{ticket.ticketType}</CardDescription>
+                      </div>
+                      <Badge variant={getStatusColor(ticket.status)}>
+                        {ticket.status}
+                      </Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-2">
+                      <div className="flex items-center text-sm">
+                        <Calendar className="mr-2 h-4 w-4" />
+                        {formatDate(ticket.eventDate)}
+                      </div>
+                      <div className="flex items-center text-sm">
+                        <MapPin className="mr-2 h-4 w-4" />
+                        {ticket.eventLocation}
+                      </div>
+                      <div className="flex items-center text-sm font-semibold">
+                        <span>${ticket.price}</span>
+                      </div>
+                    </div>
+                    
+                    <div className="flex gap-2">
+                      <Button size="sm" disabled>
+                        <Share2 className="mr-1 h-3 w-3" />
+                        Transferred
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </TabsContent>
+          
+          <TabsContent value="all" className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {tickets.map((ticket) => (
+                <Card key={ticket.id} className={`overflow-hidden ${ticket.status !== 'active' ? 'opacity-75' : ''}`}>
+                  <CardHeader className="pb-3">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <CardTitle className="text-lg">{ticket.eventTitle}</CardTitle>
+                        <CardDescription>{ticket.ticketType}</CardDescription>
+                      </div>
+                      <Badge variant={getStatusColor(ticket.status)}>
+                        {ticket.status}
+                      </Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-2">
+                      <div className="flex items-center text-sm">
+                        <Calendar className="mr-2 h-4 w-4" />
+                        {formatDate(ticket.eventDate)}
+                      </div>
+                      <div className="flex items-center text-sm">
+                        <MapPin className="mr-2 h-4 w-4" />
+                        {ticket.eventLocation}
+                      </div>
+                      {ticket.seatNumber && (
+                        <div className="flex items-center text-sm">
+                          <Ticket className="mr-2 h-4 w-4" />
+                          Seat: {ticket.seatNumber}
+                        </div>
+                      )}
+                      <div className="flex items-center text-sm font-semibold">
+                        <span>${ticket.price}</span>
+                        {ticket.nftTokenId && (
+                          <Badge variant="outline" className="ml-2">NFT</Badge>
+                        )}
+                      </div>
+                    </div>
+                    
+                    <div className="flex gap-2">
+                      {ticket.status === 'active' ? (
+                        <>
+                          <Button size="sm" onClick={() => handleDownloadTicket(ticket.id)}>
+                            <Download className="mr-1 h-3 w-3" />
+                            Download
+                          </Button>
+                          <Button variant="outline" size="sm" onClick={() => handleShareTicket(ticket.id)}>
+                            <Share2 className="mr-1 h-3 w-3" />
+                            Share
+                          </Button>
+                        </>
+                      ) : (
+                        <Button size="sm" disabled>
+                          {ticket.status === 'used' ? 'Used' : 'Transferred'}
+                        </Button>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </TabsContent>
+        </Tabs>
+      </div>
     </div>
   )
 }

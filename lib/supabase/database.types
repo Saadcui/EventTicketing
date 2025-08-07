@@ -199,3 +199,15 @@ export interface Database {
     };
   };
 }
+
+export type Tables<
+  Public extends boolean = true,
+  TableName extends string & keyof Database["public"]["Tables"] = string
+> = Public extends true
+  ? Database["public"]["Tables"]
+  : never;
+
+export type Enums<
+  Public extends boolean = true,
+  EnumName extends string & keyof Database["public"]["Enums"] = string
+> = Public extends true ? Database["public"]["Enums"] : never;

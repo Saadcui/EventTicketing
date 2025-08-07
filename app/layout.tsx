@@ -1,25 +1,26 @@
 import type React from "react"
-import type { Metadata } from "next/dist/lib/metadata/types/metadata-interface"
-import { Inter } from "next/font/google"
+import type { Metadata } from "next"
+import { Inter } from 'next/font/google'
 import "./globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
 import Navbar from "@/components/navbar"
 import Footer from "@/components/footer"
-import { AuthProvider } from "@/lib/auth"
+import { Toaster } from "@/components/ui/toaster"
+import { AuthProvider } from "@/lib/auth-provider"
 
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "BlockTix - Decentralized Event Ticketing",
-  description: "Discover and purchase blockchain-secured event tickets",
+  title: "BlockTix - Decentralized Event Platform",
+  description: "Buy and sell event tickets on the blockchain",
     generator: 'v0.dev'
 }
 
 export default function RootLayout({
   children,
-}: {
+}: Readonly<{
   children: React.ReactNode
-}) {
+}>) {
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={inter.className}>
@@ -30,6 +31,7 @@ export default function RootLayout({
               <main className="flex-1">{children}</main>
               <Footer />
             </div>
+            <Toaster />
           </AuthProvider>
         </ThemeProvider>
       </body>
